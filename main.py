@@ -20,7 +20,7 @@ app = FastAPI(title="Child Registration System API")
 
 origins = [
     "http://localhost:5173",
-    "https://birth-certificate-frontend-orpin.vercel.app/",
+    "https://birth-certificate-frontend-orpin.vercel.app",
 ]
 app.add_middleware(
     CORSMiddleware,
