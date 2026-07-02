@@ -12,7 +12,6 @@ from models import DragonCreate, DragonOut, DragonCreateResponse
 from tokens import generate_token
 from qr import generate_qr_base64
 from auth import verify_admin, create_access_token, get_current_admin
-from pdf_generator import generate_certificate_pdf
 from registration import generate_registration_number
 
 load_dotenv()
@@ -43,7 +42,9 @@ def _serialize(record: dict) -> dict:
         out["created_at"] = out["created_at"].isoformat()
     return out
 
+
 # Public endpoints --------
+
 
 @app.get("/")
 def root():
@@ -122,13 +123,16 @@ def get_dragon_qr(token: str):
 
 # Admin endpoints --------
 
+
 class LoginRequest(BaseModel):
     username: str
     password: str
-    
+
+
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
 
 @app.post("/api/admin/login", response_model=LoginResponse)
 def admin_login(body: LoginRequest):
@@ -136,6 +140,7 @@ def admin_login(body: LoginRequest):
         raise HTTPException(status_code=401, detail="Invalid username or password")
     token = create_access_token(body.username)
     return LoginResponse(access_token=token)
+
 
 @app.get("/api/admin/childs")
 def admin_list_childs(
@@ -160,11 +165,9 @@ def admin_list_childs(
         "limit": limit,
     }
 
+
 @app.get("/api/admin/childs/{token}/pdf")
-def admin_download_pdf(
-    token: str, 
-    _admin: str = Depends(get_current_admin)
-    ):
+def admin_download_pdf(token: str, _admin: str = Depends(get_current_admin)):
     result = supabase.table("childs").select("*").eq("token", token).execute()
     if not result.data:
         raise HTTPException(
