@@ -2,14 +2,17 @@ import os
 import base64
 from datetime import date, datetime
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Response, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 from database import supabase
 from models import DragonCreate, DragonOut, DragonCreateResponse
 from tokens import generate_token
 from qr import generate_qr_base64
+from auth import verify_admin, create_access_token, get_current_admin
+from pdf_generator import generate_certificate_pdf
 from registration import generate_registration_number
 
 load_dotenv()
@@ -40,6 +43,7 @@ def _serialize(record: dict) -> dict:
         out["created_at"] = out["created_at"].isoformat()
     return out
 
+# Public endpoints --------
 
 @app.get("/")
 def root():
@@ -48,9 +52,7 @@ def root():
 
 @app.post("/api/childs/", response_model=DragonCreateResponse)
 def create_dragon(payload: DragonCreate):
-    print("inside create dragon saregama opadenisa hfdjhfkjdh")
     data = payload.model_dump()
-    print("DEBUG PAYLOAD:", data)
     data["dob"] = data["dob"].isoformat()
 
     token = generate_token()
@@ -116,3 +118,64 @@ def get_dragon_qr(token: str):
     qr_b64 = generate_qr_base64(record_url)
     png_bytes = base64.b64decode(qr_b64)
     return Response(content=png_bytes, media_type="image/png")
+
+
+# Admin endpoints --------
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+    
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+@app.post("/api/admin/login", response_model=LoginResponse)
+def admin_login(body: LoginRequest):
+    if not verify_admin(body.username, body.password):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    token = create_access_token(body.username)
+    return LoginResponse(access_token=token)
+
+@app.get("/api/admin/childs")
+def admin_list_childs(
+    page: int = 1,
+    limit: int = 50,
+    _admin: str = Depends(get_current_admin),
+):
+    offset = (page - 1) * limit
+    result = (
+        supabase.table("childs")
+        .select("*")
+        .order("created_at", desc=True)
+        .range(offset, offset + limit - 1)
+        .execute()
+    )
+    count_result = supabase.table("childs").select("id", count="exact").execute()
+    total = count_result.count if count_result.count else 0
+    return {
+        "records": [_serialize(record) for record in result.data],
+        "total": total,
+        "page": page,
+        "limit": limit,
+    }
+
+@app.get("/api/admin/childs/{token}/pdf")
+def admin_download_pdf(
+    token: str, 
+    _admin: str = Depends(get_current_admin)
+    ):
+    result = supabase.table("childs").select("*").eq("token", token).execute()
+    if not result.data:
+        raise HTTPException(
+            status_code=404, detail="No Child found with this record number"
+        )
+    record = _serialize(result.data[0])
+    record_url = f"{FRONTEND_URL}/r/{token}"
+    pdf_bytes = generate_certificate_pdf(record, record_url)
+    filename = f"Child_Certificate_{record['registration_number']}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
