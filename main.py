@@ -164,21 +164,3 @@ def admin_list_childs(
         "page": page,
         "limit": limit,
     }
-
-
-@app.get("/api/admin/childs/{token}/pdf")
-def admin_download_pdf(token: str, _admin: str = Depends(get_current_admin)):
-    result = supabase.table("childs").select("*").eq("token", token).execute()
-    if not result.data:
-        raise HTTPException(
-            status_code=404, detail="No Child found with this record number"
-        )
-    record = _serialize(result.data[0])
-    record_url = f"{FRONTEND_URL}/r/{token}"
-    pdf_bytes = generate_certificate_pdf(record, record_url)
-    filename = f"Child_Certificate_{record['registration_number']}.pdf"
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
-    )
