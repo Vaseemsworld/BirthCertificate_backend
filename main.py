@@ -2,8 +2,11 @@ import os
 import base64
 from datetime import date, datetime
 
-from fastapi import FastAPI, HTTPException, Response, Depends
+from fastapi import FastAPI, HTTPException, Response, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
@@ -18,8 +21,11 @@ load_dotenv()
 
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 
-app = FastAPI(title="Child Registration System API")
+limiter = Limiter(key_func=get_remote_address)
 
+app = FastAPI(title="Child Registration System API")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 origins = [
     "http://localhost:5173",
     "https://birth-certificate-frontend-orpin.vercel.app",
@@ -52,7 +58,8 @@ def root():
 
 
 @app.post("/api/childs/", response_model=DragonCreateResponse)
-def create_dragon(payload: DragonCreate):
+@limiter.limit("5/minute")
+def create_dragon(request: Request, payload: DragonCreate):
     data = payload.model_dump()
     data["dob"] = data["dob"].isoformat()
 
